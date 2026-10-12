@@ -1,0 +1,47 @@
+name: Setup shared Rust compiler cache
+description: Configure the runner's preinstalled sccache for trusted cache writes
+inputs:
+  writer-password:
+    description: Redis writer password, provided only on trusted workflow events
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: Enable shared compiler cache
+      shell: bash
+      env:
+        WRITER_PASSWORD: ${{ inputs.writer-password }}
+      run: |
+        if ! command -v sccache >/dev/null 2>&1 \
+            || [[ -z "${SCCACHE_REDIS_ENDPOINT:-}" || -z "${SCCACHE_REDIS_PASSWORD:-}" ]]; then
+          echo '::warning::Shared sccache is unavailable on this runner; compiling normally'
+          echo 'RUSTC_WRAPPER=' >> "$GITHUB_ENV"
+          exit 0
+        fi
+        export SCCACHE_REDIS_RW_MODE=READ_ONLY
+        if [[ -n "$WRITER_PASSWORD" ]]; then
+          export SCCACHE_REDIS_USERNAME=ci-writer
+          export SCCACHE_REDIS_PASSWORD="$WRITER_PASSWORD"
+          export SCCACHE_REDIS_RW_MODE=READ_WRITE
+        fi
+        echo "::add-mask::$SCCACHE_REDIS_PASSWORD"
+        export SCCACHE_REDIS_KEY_PREFIX=anolisa-ci/v1
+        export SCCACHE_CLIENT_SIDE=1
+        export SCCACHE_IGNORE_SERVER_IO_ERROR=1
+        # The runner hook starts a read-only server. Credentials are server-scoped.
+        timeout 5s sccache --stop-server >/dev/null 2>&1 || true
+        if ! timeout 20s sccache --start-server; then
+          echo '::warning::Shared sccache failed to start; compiling normally'
+          echo 'RUSTC_WRAPPER=' >> "$GITHUB_ENV"
+          exit 0
+        fi
+        {
+          printf 'SCCACHE_REDIS_USERNAME=%s\n' "$SCCACHE_REDIS_USERNAME"
+          printf 'SCCACHE_REDIS_PASSWORD=%s\n' "$SCCACHE_REDIS_PASSWORD"
+          printf 'SCCACHE_REDIS_RW_MODE=%s\n' "$SCCACHE_REDIS_RW_MODE"
+          echo 'SCCACHE_REDIS_KEY_PREFIX=anolisa-ci/v1'
+          echo 'SCCACHE_CLIENT_SIDE=1'
+          echo 'SCCACHE_IGNORE_SERVER_IO_ERROR=1'
+          echo 'CARGO_INCREMENTAL=0'
+          echo 'RUSTC_WRAPPER=sccache'
+        } >> "$GITHUB_ENV"
