@@ -178,12 +178,23 @@ def ordered_unique(items):
 
 
 def merge_plugin_allow(existing, merged):
-    existing_allow = existing.get("plugins", {}).get("allow", [])
-    merged_allow = merged.get("plugins", {}).get("allow")
+    plugins = existing.get("plugins") if isinstance(existing, dict) else {}
+    if not isinstance(plugins, dict):
+        plugins = {}
+    existing_allow = plugins.get("allow", [])
+    if not isinstance(existing_allow, list):
+        existing_allow = []
+
+    merged_plugins = merged.get("plugins") if isinstance(merged, dict) else None
+    if not isinstance(merged_plugins, dict):
+        return merged
+    merged_allow = merged_plugins.get("allow")
     if merged_allow is None:
         return merged
+    if not isinstance(merged_allow, list):
+        merged_allow = [merged_allow]
 
-    merged.setdefault("plugins", {})["allow"] = ordered_unique(
+    merged_plugins["allow"] = ordered_unique(
         [*existing_allow, *merged_allow]
     )
     return merged
@@ -535,6 +546,26 @@ def apply_config(config, config_path, *, dry_run=False):
                 existing = json.load(fh)
         except json.JSONDecodeError as exc:
             raise SystemExit(f"Invalid JSON in {config_path}: {exc}") from exc
+
+        if not isinstance(existing, dict):
+            val_name = "null" if existing is None else type(existing).__name__
+            raise SystemExit(
+                f"Invalid configuration in {config_path}: expected JSON object, got {val_name}"
+            )
+        if "plugins" in existing:
+            plugins = existing["plugins"]
+            if not isinstance(plugins, dict):
+                val_name = "null" if plugins is None else type(plugins).__name__
+                raise SystemExit(
+                    f"Invalid configuration in {config_path}: 'plugins' must be a JSON object, got {val_name}"
+                )
+            if "allow" in plugins:
+                allow = plugins["allow"]
+                if not isinstance(allow, list):
+                    val_name = "null" if allow is None else type(allow).__name__
+                    raise SystemExit(
+                        f"Invalid configuration in {config_path}: 'plugins.allow' must be a list, got {val_name}"
+                    )
 
     merged = deep_merge(existing, config)
     merged = merge_plugin_allow(existing, merged)
