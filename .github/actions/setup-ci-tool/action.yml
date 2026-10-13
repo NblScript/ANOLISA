@@ -1,0 +1,54 @@
+name: Setup CI tool
+description: Reuse the requested tool version from the runner image, or install it
+inputs:
+  tool:
+    required: true
+    description: Executable name (cargo-llvm-cov, cargo-tarpaulin, cargo-sbom, just, diff-cover)
+  version:
+    required: true
+    description: Exact tool version
+runs:
+  using: composite
+  steps:
+    - id: installed
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        command=("$TOOL")
+        if [[ "$TOOL" == cargo-* ]]; then
+          command=(cargo "${TOOL#cargo-}")
+        fi
+        if [[ "$("${command[@]}" --version 2>/dev/null || true)" == *" $VERSION" ]]; then
+          echo "Reusing $TOOL $VERSION from the runner"
+          echo 'available=true' >> "$GITHUB_OUTPUT"
+        fi
+    - if: steps.installed.outputs.available != 'true' && inputs.tool != 'diff-cover' && inputs.tool != 'cargo-sbom' && inputs.tool != 'cargo-tarpaulin'
+      uses: taiki-e/install-action@v2
+      with:
+        tool: ${{ inputs.tool }}@${{ inputs.version }}
+    # Preserve source-install fallbacks: upstream GNU binaries may require newer glibc.
+    - if: steps.installed.outputs.available != 'true' && (inputs.tool == 'cargo-sbom' || inputs.tool == 'cargo-tarpaulin')
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        cargo install "$TOOL" --version "$VERSION" --locked --force
+        echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+    - if: steps.installed.outputs.available != 'true' && inputs.tool == 'diff-cover'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: uv tool install --force "diff-cover==$VERSION"
+    - shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        command=("$TOOL")
+        if [[ "$TOOL" == cargo-* ]]; then
+          command=(cargo "${TOOL#cargo-}")
+        fi
+        [[ "$("${command[@]}" --version)" == *" $VERSION" ]]

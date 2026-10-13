@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/actions/build-cosh-ng-prebuilt/**'
       - '.github/actions/prebuilt-rust-common/**'
+      - '.github/actions/setup-ci-tool/**'
       - '.github/workflows/cosh-ng-prebuilt-ci.yaml'
       - '.github/workflows/release.yaml'
       - '.github/workflows/release-preview.yaml'
@@ -15,6 +16,7 @@ on:
     paths:
       - '.github/actions/build-cosh-ng-prebuilt/**'
       - '.github/actions/prebuilt-rust-common/**'
+      - '.github/actions/setup-ci-tool/**'
       - '.github/workflows/cosh-ng-prebuilt-ci.yaml'
       - '.github/workflows/release.yaml'
       - '.github/workflows/release-preview.yaml'
@@ -44,7 +46,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.93.0
 
       - name: Install cargo-sbom
-        run: cargo install cargo-sbom --version 0.10.0 --locked
+        uses: ./.github/actions/setup-ci-tool
+        with:
+          tool: cargo-sbom
+          version: '0.10.0'
 
       - name: Run prebuilt action regression tests
         run: .github/actions/build-cosh-ng-prebuilt/test.sh

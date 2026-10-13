@@ -1,0 +1,26 @@
+name: Setup CI system packages
+description: Install only system packages missing from the runner image
+inputs:
+  packages:
+    required: true
+    description: Space-separated Debian package names
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        set -f
+        missing=()
+        for package in $PACKAGES; do
+          if [[ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)" != 'install ok installed' ]]; then
+            missing+=("$package")
+          fi
+        done
+        if (( ${#missing[@]} )); then
+          sudo apt-get update
+          sudo apt-get install -y "${missing[@]}"
+        else
+          echo "Reusing installed packages: $PACKAGES"
+        fi
